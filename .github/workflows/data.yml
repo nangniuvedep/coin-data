@@ -1,0 +1,34 @@
+name: data
+on:
+  workflow_dispatch: {}
+concurrency:
+  group: data
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.S_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.S_SECRET }}
+      AWS_DEFAULT_REGION: auto
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+      E: ${{ secrets.S_ENDPOINT }}
+      B: ${{ secrets.S_BUCKET }}
+      P: ${{ secrets.S_PREFIX }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - name: Load
+        run: aws s3 cp "s3://$B/${P}state.json" state.json --endpoint-url "$E" --only-show-errors || echo "first run"
+      - name: Fetch
+        run: node run.js
+      - name: Save
+        run: |
+          aws s3 cp state.json "s3://$B/${P}state.json" --endpoint-url "$E" --only-show-errors --content-type application/json --cache-control "no-store"
+          aws s3 cp live.json "s3://$B/${P}live.json" --endpoint-url "$E" --only-show-errors --content-type application/json --cache-control "public, max-age=60"
