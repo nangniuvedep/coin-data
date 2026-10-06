@@ -1,26 +1,36 @@
 name: backtest
-# Technical Signal backtest (backtest/run.js): read-only, no secrets, no R2 write.
-# Runs when backtest/ changes on the working branch, or by hand.
+# Technical Signal backtests (backtest/run.js = current alert rules v2, backtest/v3.js = other kinds of
+# signal). Read-only on the market: no secrets, no R2. Writes only its own reports back to this branch
+# (backtest/out/) so they can be read without the Actions UI; a GITHUB_TOKEN push does not re-trigger.
 on:
   push:
     branches: [claude/stoic-faraday-wlyhkm]
-    paths: ["backtest/**", ".github/workflows/backtest.yml"]
+    paths: ["backtest/*.js", "backtest/engine/**", ".github/workflows/backtest.yml"]
   workflow_dispatch: {}
 permissions:
-  contents: read
+  contents: write
+concurrency:
+  group: backtest
+  cancel-in-progress: true
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: "24"
-      - name: Backtest
+      - name: Current rules (v2)
         run: node backtest/run.js
-      - uses: actions/upload-artifact@v4
+      - name: Other kinds of signal (v3)
         if: always()
-        with:
-          name: backtest-report
-          path: backtest/out
+        run: node backtest/v3.js
+      - name: Save the reports on this branch
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f backtest/out/*.md backtest/out/*.json || true
+          git commit -m "backtest: reports $(date -u +%F)" || exit 0
+          git push
