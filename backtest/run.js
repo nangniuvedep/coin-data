@@ -1,24 +1,27 @@
 /* backtest/run.js — how good are the Technical Signal alerts, and is there a better way?
    Runs on GitHub Actions (Binance data-api is reachable there). Read-only: no secrets, no R2.
 
-   1. Data: the most liquid USDT coins (24h volume >= 5 M), 1000 closed candles on 15m / 1H / 4H,
-      plus the higher timeframe of each (1H / 4H / 1D) and BTC for the context, exactly what the
-      live scanner uses.
+   1. Data: the most liquid USDT coins (24h volume >= 5 M), LONG history (v2): 4000 candles 1H
+      (~5.5 months), 3000 candles 4H (~16 months), 1000 candles 1D (~2.7 years), plus the higher
+      timeframe of each and BTC for the context, exactly what the live scanner uses. 15m was
+      dropped after v1 (1000 candles, 85 coins): edge -0.18 % per alert, t -6.1 — noise plus fees.
    2. The CURRENT rules (engine/ = the same signals.js the app runs): every alert the scanner would
       have raised (new or upgraded, like the live stories), and what price did after it: return at
       the close of 5 / 10 / 20 candles in the alert's direction, minus 0.1 % fees (round trip).
       Compared with the plain drift of the same coins (every candle, same direction) = the edge.
-   3. ALTERNATIVES, chosen on the first 70 % of the time only (train), then run on the last 30 %
-      (test, never seen while choosing) — that second run is the simulation of the better method.
+   3. ALTERNATIVES, walk-forward: the time is cut into 5 equal folds; a method is chosen on folds
+      1-3 only (train), then run on folds 4-5 (test, never seen while choosing) — that run is the
+      simulation of the better method. A method worth keeping wins in most folds, not just one.
    Output: backtest/out/report.md (also the job summary) + report.json. */
 "use strict";
 const fs = require("fs"), path = require("path");
 const S = require("./engine/signals.js"), SCAN = require("./engine/scanner.js"), I = require("./engine/indicators.js");
 
 const HOST = "https://data-api.binance.vision";
-const COINS = +process.env.COINS || 120, BARS = 1000, FEE = 0.001, HS = [5, 10, 20], SPLIT = 0.7;
-const TFS = ["15m", "1H", "4H"];
-const IV = { "15m": "15m", "1H": "1h", "4H": "4h", "1D": "1d" };
+const COINS = +process.env.COINS || 120, FEE = 0.001, HS = [5, 10, 20], FOLDS = 5, TRAIN_FOLDS = 3;
+const TFS = ["1H", "4H", "1D"];
+const BARS = { "1H": 4000, "4H": 3000, "1D": 1000, "1W": 300 };
+const IV = { "15m": "15m", "1H": "1h", "4H": "4h", "1D": "1d", "1W": "1w" };
 const SKIP = new Set("USDC FDUSD TUSD USDP DAI BUSD USDE USDS USD1 U EUR EURI AEUR XUSD BFUSD PYUSD RLUSD GUSD SUSD FRAX LUSD PAX WBTC WBETH BETH STETH WSTETH CBBTC BTCB PAXG XAUT".split(" "));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const OUT = path.join(__dirname, "out");
@@ -44,7 +47,18 @@ async function pool(items, n, fn) {
   await Promise.all([...Array(n)].map(async () => { while (i < items.length) { const k = i++; out[k] = await fn(items[k]).catch((e) => ({ err: String(e.message || e) })); } }));
   return out;
 }
-const klines = (pair, tf, limit = BARS) => get(`/api/v3/klines?symbol=${pair}&interval=${IV[tf]}&limit=${limit}`).then((rows) => SCAN.closed(rows, SCAN.TF[tf].ms, Date.now()));
+/* n closed candles, newest last: pages of 1000 going back with endTime */
+async function klines(pair, tf, n = BARS[tf]) {
+  let rows = [], end = null;
+  while (rows.length < n) {
+    const page = await get(`/api/v3/klines?symbol=${pair}&interval=${IV[tf]}&limit=${Math.min(1000, n - rows.length)}${end ? "&endTime=" + end : ""}`);
+    if (!page.length) break;
+    rows = page.concat(rows);
+    end = page[0][0] - 1;
+    if (page.length < 1000) break;
+  }
+  return SCAN.closed(rows, SCAN.TF[tf].ms, Date.now());
+}
 
 /* trend of the higher timeframe at each candle of k (same mapping as scanner.replay) */
 function htfAt(k, H, tf) {
@@ -92,6 +106,11 @@ function stat(list, h = 10) {
   /* t = edge / (st.dev. / √n): |t| < 2 → could be luck; meaningless under 10 alerts */
   return { n: list.length, win: list.length ? list.filter((x) => x.ret[h] > 0).length / list.length : NaN, avg: m, edge: mean(g), t: list.length >= 10 ? (mean(g) / sd) * Math.sqrt(list.length) : NaN };
 }
+/* walk-forward: edge in each fold, folds won */
+function folds(list, h = 10) {
+  const per = [...Array(FOLDS)].map((_, i) => stat(list.filter((e) => e.fold === i), h));
+  return { per, won: per.filter((s) => s.n >= 20 && s.edge > 0).length, used: per.filter((s) => s.n >= 20).length };
+}
 const pct = (x, d = 2) => (Number.isFinite(x) ? (x * 100).toFixed(d) + "%" : "—");
 const row = (name, s) => `| ${name} | ${s.n} | ${pct(s.win, 0)} | ${pct(s.avg)} | ${pct(s.edge)} | ${Number.isFinite(s.t) ? s.t.toFixed(1) : "—"} |`;
 const HEAD = "| | alerts | win | avg return (10 candles, after fees) | edge vs drift | t |\n|---|---|---|---|---|---|";
@@ -120,6 +139,12 @@ function alternatives(train) {
     ["fade (opposite direction) — all", () => true, true],
     ["fade — stretched alerts only", (e) => e.stretched, true],
     ["fade — against higher TF only", (e) => !e.htf, true],
+    ["trend-follow: 4H/1D, higher TF + EMA200 side + price breakout", (e) => e.tf !== "1H" && e.htf && (e.dir > 0 ? e.above200 : !e.above200) && e.fams.includes("price")],
+    ["breakout + volume (price & volume families)", (e) => e.fams.includes("price") && e.fams.includes("volume")],
+    ["squeeze breakout with the trend (volatility + higher TF)", (e) => e.fams.includes("volatility") && e.htf],
+    ["fade in a range (ADX < 20)", (e) => e.adx < 20, true],
+    ["bullish in an uptrend only (higher TF + above EMA200)", (e) => e.dir > 0 && e.htf && e.above200],
+    ["1D only", (e) => e.tf === "1D"],
     ["family score > 0 (weights learned on train)", (e) => score(e) > 0],
     ["family score in top 30 % (train threshold)", null],
   ];
@@ -155,14 +180,22 @@ const applyRule = (list, [, f, fl]) => list.filter(f).map((e) => (fl ? flip(e) :
       all = all.concat(events(c.sym, tf, k, data[c.sym][SCAN.TF[tf].htf], B[SCAN.TF[tf].htf]));
     }
   all.sort((a, b) => a.t - b.t);
-  const cut = all.length ? all[Math.floor(all.length * SPLIT)].t : 0;
-  const train = all.filter((e) => e.t < cut), test = all.filter((e) => e.t >= cut);
+  /* 5 folds of equal TIME, cut per timeframe (1D spans years, 1H months: one shared clock would put
+     only 1D in the first folds); train = folds 1-3, test = folds 4-5 */
+  for (const tf of TFS) {
+    const l = all.filter((e) => e.tf === tf);
+    if (!l.length) continue;
+    const a = l[0].t, b = l[l.length - 1].t + 1;
+    l.forEach((e) => (e.fold = Math.min(FOLDS - 1, Math.floor(((e.t - a) / (b - a)) * FOLDS))));
+  }
+  const t0a = all.length ? all[0].t : 0, t1a = all.length ? all[all.length - 1].t + 1 : 0;
+  const train = all.filter((e) => e.fold < TRAIN_FOLDS), test = all.filter((e) => e.fold >= TRAIN_FOLDS);
   console.log(`alerts: ${all.length} (train ${train.length} · test ${test.length})`);
 
   const md = [];
   md.push(`# Technical Signal — backtest\n`);
-  md.push(`${coins.length} coins (24h volume ≥ 5 M USD) · ${TFS.join(" / ")} · ${BARS} candles each · ${all.length} alerts · fees 0.1 % round trip.`);
-  md.push(`Train = first 70 % of the time (choosing), test = last 30 % (never seen while choosing). Edge = return minus the plain drift of the same coin in the same direction.\n`);
+  md.push(`${coins.length} coins (24h volume ≥ 5 M USD) · ${TFS.map((t) => t + " " + BARS[t]).join(" / ")} candles · ${all.length} alerts · fees 0.1 % round trip · ${new Date(t0a).toISOString().slice(0, 10)} → ${new Date(t1a).toISOString().slice(0, 10)}.`);
+  md.push(`Walk-forward: ${FOLDS} folds of equal time on each timeframe; train = folds 1-${TRAIN_FOLDS} (choosing), test = folds ${TRAIN_FOLDS + 1}-${FOLDS} (never seen while choosing). Edge = return minus the plain drift of the same coin in the same direction.\n`);
 
   md.push(`## 1. Current rules — by stars and timeframe (all data)\n\n${HEAD}`);
   for (const s of [3, 4, 5]) md.push(row(`${s}★`, stat(all.filter((e) => e.stars === s))));
@@ -174,11 +207,11 @@ const applyRule = (list, [, f, fl]) => list.filter(f).map((e) => (fl ? flip(e) :
   for (const f of S.FAM) md.push(row(f, stat(train.filter((e) => e.fams.includes(f)))));
 
   const { cands, w, thr } = alternatives(train);
-  md.push(`\n## 3. Alternatives — train (choose) → test (simulation)\n\n| method | train alerts | train edge | test alerts | test win | test avg | test edge | test t |\n|---|---|---|---|---|---|---|---|`);
+  md.push(`\n## 3. Alternatives — train (choose) → test (simulation)\n\n| method | train alerts | train edge | test alerts | test win | test avg | test edge | test t | folds won (edge > 0) | edge per fold |\n|---|---|---|---|---|---|---|---|---|---|`);
   const res = cands.map((c) => {
-    const a = stat(applyRule(train, c)), b = stat(applyRule(test, c));
-    md.push(`| ${c[0]} | ${a.n} | ${pct(a.edge)} | ${b.n} | ${pct(b.win, 0)} | ${pct(b.avg)} | ${pct(b.edge)} | ${Number.isFinite(b.t) ? b.t.toFixed(1) : "—"} |`);
-    return { name: c[0], train: a, test: b };
+    const a = stat(applyRule(train, c)), b = stat(applyRule(test, c)), f = folds(applyRule(all, c));
+    md.push(`| ${c[0]} | ${a.n} | ${pct(a.edge)} | ${b.n} | ${pct(b.win, 0)} | ${pct(b.avg)} | ${pct(b.edge)} | ${Number.isFinite(b.t) ? b.t.toFixed(1) : "—"} | ${f.won}/${f.used} | ${f.per.map((s) => (s.n >= 20 ? pct(s.edge, 1) : "—")).join(" · ")} |`);
+    return { name: c[0], train: a, test: b, folds: f };
   });
   /* the pick: best TRAIN edge among methods with enough alerts (>= 100 train, >= 30 test) */
   const ok = res.filter((r) => r.train.n >= 100 && r.test.n >= 30);
@@ -187,11 +220,13 @@ const applyRule = (list, [, f, fl]) => list.filter(f).map((e) => (fl ? flip(e) :
   md.push(`\nFamily weights learned on train (edge when present): ${Object.entries(w).map(([f, v]) => `${f} ${pct(v)}`).join(" · ")}; top-30 % score threshold ${thr.toFixed(4)}.`);
   md.push(`\n## 4. Verdict\n`);
   md.push(`- Current rules on the test period: ${base.test.n} alerts, win ${pct(base.test.win, 0)}, avg ${pct(base.test.avg)}, edge ${pct(base.test.edge)} (t ${Number.isFinite(base.test.t) ? base.test.t.toFixed(1) : "—"}).`);
-  if (pick) md.push(`- Best on train: **${pick.name}** (train edge ${pct(pick.train.edge)}${pick.train.edge > 0 ? "" : " — no method beat the drift even on train"}) → test: ${pick.test.n} alerts, win ${pct(pick.test.win, 0)}, avg ${pct(pick.test.avg)}, edge ${pct(pick.test.edge)} (t ${Number.isFinite(pick.test.t) ? pick.test.t.toFixed(1) : "—"}).`);
+  if (pick) md.push(`- Best on train: **${pick.name}** (train edge ${pct(pick.train.edge)}${pick.train.edge > 0 ? "" : " — no method beat the drift even on train"}) → test: ${pick.test.n} alerts, win ${pct(pick.test.win, 0)}, avg ${pct(pick.test.avg)}, edge ${pct(pick.test.edge)} (t ${Number.isFinite(pick.test.t) ? pick.test.t.toFixed(1) : "—"}), folds won ${pick.folds.won}/${pick.folds.used}.`);
+  const steady = res.filter((r) => r.folds.used >= 4 && r.folds.won >= r.folds.used - 1 && r.test.edge > 0 && r.test.t >= 2);
+  md.push(steady.length ? `- Positive in (almost) every fold AND significant on test: ${steady.map((r) => `**${r.name}** (test edge ${pct(r.test.edge)}, t ${r.test.t.toFixed(1)}, folds ${r.folds.won}/${r.folds.used})`).join("; ")}.` : `- No method is positive in almost every fold and significant on test.`);
   md.push(`- |t| < 2 means the result could be luck.`);
   const text = md.join("\n");
   fs.writeFileSync(path.join(OUT, "report.md"), text);
-  fs.writeFileSync(path.join(OUT, "report.json"), JSON.stringify({ at: Date.now(), coins: coins.length, alerts: all.length, cut, res, w, thr }, null, 1));
+  fs.writeFileSync(path.join(OUT, "report.json"), JSON.stringify({ at: Date.now(), coins: coins.length, alerts: all.length, from: t0a, to: t1a, res, w, thr }, null, 1));
   process.env.GITHUB_STEP_SUMMARY && fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, text + "\n");
   console.log("\n" + text);
 })().catch((e) => {
