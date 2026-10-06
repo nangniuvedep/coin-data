@@ -1,6 +1,6 @@
 name: backtest
 # Technical Signal backtests (backtest/run.js = current alert rules v2, backtest/v3.js = other kinds of
-# signal). Read-only on the market: no secrets, no R2. Writes only its own reports back to this branch
+# signal, backtest/v4.js = breakout + volume event by event). Read-only on the market: no secrets, no R2. Writes only its own reports back to this branch
 # (backtest/out/) so they can be read without the Actions UI; a GITHUB_TOKEN push does not re-trigger.
 on:
   push:
@@ -26,6 +26,9 @@ jobs:
       - name: Other kinds of signal (v3)
         if: always()
         run: node backtest/v3.js
+      - name: Breakout + volume deep dive (v4)
+        if: always()
+        run: node backtest/v4.js
       - name: Save the reports on this branch
         if: always()
         run: |

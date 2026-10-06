@@ -51,7 +51,6 @@ const METHODS = [
   { name: "momentum 4 weeks only when BTC > MA200", hold: 7, back: 200, pick: (D, i) => (D.btc[i] > sma(D.btc, i, 200) ? top(live(D, i, 29), (k) => ret(D, k, i - 29, i - 1)) : null) },
   { name: "low volatility 30 days (lowest 20 %, hold 1 week)", hold: 7, back: 31, pick: (D, i) => top(live(D, i, 31), (k) => { const r = []; for (let j = i - 29; j <= i; j++) r.push(Math.log(D.c[k][j] / D.c[k][j - 1])); const m = r.reduce((s, x) => s + x, 0) / r.length; return Math.sqrt(r.reduce((s, x) => s + (x - m) ** 2, 0) / r.length); }, PICK, true) },
   { name: "near the 1-year high (top 20 %, hold 1 week)", hold: 7, back: 365, pick: (D, i) => top(live(D, i, 365), (k) => D.c[k][i] / Math.max(...D.c[k].slice(i - 364, i + 1))) },
-  { name: "strongest vs BTC 4 weeks, BTC > MA200 (hold 1 week)", hold: 7, back: 200, pick: (D, i) => (D.btc[i] > sma(D.btc, i, 200) ? top(live(D, i, 29), (k) => ret(D, k, i - 29, i - 1) - (D.btc[i - 1] / D.btc[i - 29] - 1)) : null) },
 ];
 
 /* run one method: non-overlapping periods of `hold` days → excess returns */
