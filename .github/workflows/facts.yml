@@ -1,0 +1,33 @@
+name: facts
+# How many facts (backtest/engine/events.js) the scanner would have sent over the last 30 days
+# (backtest/facts.js). Read-only on the market: no secrets, no R2. Writes only its own report back to
+# this branch (backtest/out/facts.*); a GITHUB_TOKEN push does not re-trigger.
+on:
+  push:
+    branches: [claude/stoic-faraday-wlyhkm]
+    paths: ["backtest/facts.js", "backtest/engine/events.js", "backtest/engine/scanner.js", ".github/workflows/facts.yml"]
+  workflow_dispatch: {}
+permissions:
+  contents: write
+concurrency:
+  group: facts
+  cancel-in-progress: true
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - name: Facts per day (last 30 days)
+        run: node backtest/facts.js
+      - name: Save the report on this branch
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f backtest/out/facts.md backtest/out/facts.json || true
+          git commit -m "facts: report $(date -u +%F)" || exit 0
+          git pull --rebase -q origin "$GITHUB_REF_NAME" && git push
