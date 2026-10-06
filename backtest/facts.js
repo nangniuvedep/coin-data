@@ -10,7 +10,7 @@ const HOST = "https://data-api.binance.vision";
 const DAYS = 30, MAX_COINS = 500, LIQ = 5e6;
 const SKIP = new Set("USDC FDUSD TUSD USDP DAI BUSD USDE USDS USD1 U EUR EURI AEUR XUSD BFUSD PYUSD RLUSD GUSD SUSD FRAX LUSD PAX WBTC WBETH BETH STETH WSTETH CBBTC BTCB PAXG XAUT".split(" "));
 const TFS = ["15m", "1H", "4H", "1D"];
-const NEED = { "15m": 21, "1H": 21, "4H": 181, "1D": 366 }; /* candles before the one judged */
+const NEED = { "15m": 21, "1H": 21, "4H": 21, "1D": 366 }; /* candles before the one judged */
 const OUT = path.join(__dirname, "out");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function get(p) {

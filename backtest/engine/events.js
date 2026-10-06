@@ -3,8 +3,11 @@
 
    coin(k, tf)          → facts of the LAST candle of k (closed candles, scanner.closed)
      move   |close / open − 1| ≥ MOVE[tf]
-     vol    volume ≥ VOL_X × the average of the 20 candles before, worth ≥ VOL_USD[tf]
-     hi/lo  close above the highest / below the lowest close of the HILO[tf] candles before (4H, 1D)
+     vol    volume ≥ VOL_X × the average of the 20 candles before, worth ≥ VOL_USD[tf], and price
+            moved at least half of MOVE[tf] (a volume spike on a flat candle is noise)
+     hi/lo  close above the highest / below the lowest close of the last 1 year / 90 days (1D only)
+   Thresholds tuned on 30 days of real candles (coin-data backtest/facts.js, 06/10/2026): the first
+   set gave ~43 facts a day (mostly 15m volume spikes on flat candles and repeated 4H 30-day highs).
    market(list, tf)     → one fact when ≥ SHARE of the coins closed the candle the same way and the
                           median move is ≥ MKT[tf]
    capture(klines, tf)  → {klines, rows}: wraps the scanner's kline fetcher and keeps each coin's
@@ -25,12 +28,13 @@
     MOVE: { "15m": 0.04, "1H": 0.06, "4H": 0.1, "1D": 0.15 },
     VOL_X: 5,
     VOL_USD: { "15m": 5e5, "1H": 2e6, "4H": 5e6, "1D": 2e7 },
-    HILO: { "4H": [[180, "30 days", "30 ngày"]], "1D": [[365, "1 year", "1 năm"], [90, "90 days", "90 ngày"]] },
+    HILO: { "1D": [[365, "1 year", "1 năm"], [90, "90 days", "90 ngày"]] },
     SHARE: 0.8,
     MKT: { "15m": 0.008, "1H": 0.015, "4H": 0.03, "1D": 0.05 },
     MIN_COINS: 20,
     COIN_QV: 2e7, /* coin facts only for coins trading ≥ $20M a day (small coins jump all the time) */
     COOL: { "15m": 4, "1H": 3, "4H": 2, "1D": 1 }, /* same kind on the same coin + timeframe: not again for N candles */
+    COOL_HILO: 3 * 864e5, /* a coin making new highs every day of a rally: once in 3 days */
     MAX_RUN: 12, /* coin facts kept per timeframe scan (a crash = one market fact, not 300 coins) */
     KEEP_MS: 48 * 36e5,
     MAX: 400,
@@ -50,7 +54,7 @@
     for (let j = i - 20; j < i; j++) avg += k.v[j];
     avg /= 20;
     const x = avg > 0 ? k.v[i] / avg : 0;
-    if (x >= CFG.VOL_X && k.v[i] * k.c[i] >= CFG.VOL_USD[tf])
+    if (x >= CFG.VOL_X && k.v[i] * k.c[i] >= CFG.VOL_USD[tf] && Math.abs(ch) >= CFG.MOVE[tf] / 2)
       out.push({ k: "vol", dir: Math.sign(ch) || 1, v: x, en: `Volume ${num(x, 1)}× the average of the last 20 candles`, vi: `Khối lượng gấp ${num(x, 1, 1)} lần trung bình 20 nến trước` });
     for (const [n, pen, pvi] of CFG.HILO[tf] || []) {
       if (i < n) continue;
@@ -109,8 +113,8 @@
     state.factLast = state.factLast || {};
     const ms = SCAN.TF[tf].ms, cool = CFG.COOL[tf] * ms, last = state.factLast, fresh = [];
     const take = (sym, f) => {
-      const key = sym + "|" + tf + "|" + (f.k === "hi" || f.k === "lo" ? "hilo" : f.k);
-      if (last[key] != null && at - last[key] < cool) return false;
+      const hilo = f.k === "hi" || f.k === "lo", key = sym + "|" + tf + "|" + (hilo ? "hilo" : f.k);
+      if (last[key] != null && at - last[key] < (hilo ? CFG.COOL_HILO : cool)) return false;
       last[key] = at;
       return true;
     };
