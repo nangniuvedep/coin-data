@@ -1,0 +1,26 @@
+name: backtest
+# Technical Signal backtest (backtest/run.js): read-only, no secrets, no R2 write.
+# Runs when backtest/ changes on the working branch, or by hand.
+on:
+  push:
+    branches: [claude/stoic-faraday-wlyhkm]
+    paths: ["backtest/**", ".github/workflows/backtest.yml"]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - name: Backtest
+        run: node backtest/run.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backtest-report
+          path: backtest/out
