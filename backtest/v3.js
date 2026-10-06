@@ -98,7 +98,7 @@ const pct = (x, d = 2) => (Number.isFinite(x) ? (x * 100).toFixed(d) + "%" : "�
     if (c.sym === "BTC") D.btc = C;
   }
   if (!D.btc) throw new Error("no BTC");
-  const md = [`# Technical Signal — backtest v3: other kinds of signal\n`,
+  const md = [`# checkcoin — backtest v3: other kinds of signal\n`,
     `${D.c.length} coins · daily candles ${new Date(start).toISOString().slice(0, 10)} → ${new Date(today).toISOString().slice(0, 10)} · picks vs the equal-weight average of all coins, after 0.1 % fees per rebalance. Folds = 5 equal stretches of time.\n`,
     `| method | periods | excess per period | periods won | t | yearly excess (approx.) | folds won | excess per fold |`, `|---|---|---|---|---|---|---|---|`];
   const res = METHODS.map((m) => {

@@ -1,5 +1,5 @@
 name: backtest
-# Technical Signal backtests (backtest/run.js = current alert rules v2, backtest/v3.js = other kinds of
+# checkcoin backtests (backtest/run.js = current alert rules v2, backtest/v3.js = other kinds of
 # signal, backtest/v4.js = breakout + volume event by event). Read-only on the market: no secrets, no R2. Writes only its own reports back to this branch
 # (backtest/out/) so they can be read without the Actions UI; a GITHUB_TOKEN push does not re-trigger.
 on:

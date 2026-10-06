@@ -1,4 +1,4 @@
-# Technical Signal — backtest
+# checkcoin — backtest
 
 85 coins (24h volume ≥ 5 M USD) · 1H 4000 / 4H 3000 / 1D 1000 candles · 44464 alerts · fees 0.1 % round trip · 2024-11-05 → 2026-10-05.
 Walk-forward: 5 folds of equal time on each timeframe; train = folds 1-3 (choosing), test = folds 4-5 (never seen while choosing). Edge = return minus the plain drift of the same coin in the same direction.

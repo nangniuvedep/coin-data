@@ -1,4 +1,4 @@
-/* backtest/run.js — how good are the Technical Signal alerts, and is there a better way?
+/* backtest/run.js — how good are the checkcoin alerts, and is there a better way?
    Runs on GitHub Actions (Binance data-api is reachable there). Read-only: no secrets, no R2.
 
    1. Data: the most liquid USDT coins (24h volume >= 5 M), LONG history (v2): 4000 candles 1H
@@ -193,7 +193,7 @@ const applyRule = (list, [, f, fl]) => list.filter(f).map((e) => (fl ? flip(e) :
   console.log(`alerts: ${all.length} (train ${train.length} · test ${test.length})`);
 
   const md = [];
-  md.push(`# Technical Signal — backtest\n`);
+  md.push(`# checkcoin — backtest\n`);
   md.push(`${coins.length} coins (24h volume ≥ 5 M USD) · ${TFS.map((t) => t + " " + BARS[t]).join(" / ")} candles · ${all.length} alerts · fees 0.1 % round trip · ${new Date(t0a).toISOString().slice(0, 10)} → ${new Date(t1a).toISOString().slice(0, 10)}.`);
   md.push(`Walk-forward: ${FOLDS} folds of equal time on each timeframe; train = folds 1-${TRAIN_FOLDS} (choosing), test = folds ${TRAIN_FOLDS + 1}-${FOLDS} (never seen while choosing). Edge = return minus the plain drift of the same coin in the same direction.\n`);
 

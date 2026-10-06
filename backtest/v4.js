@@ -105,7 +105,7 @@ const median = (a) => { if (!a.length) return NaN; const s = [...a].sort((x, y) 
     const m = dm.reduce((s, x) => s + x, 0) / (dm.length || 1), sd = Math.sqrt(dm.reduce((s, x) => s + (x - m) ** 2, 0) / (dm.length || 1)) || 1e-9;
     return { n: xs.length, days: dm.length, mean: xs.reduce((s, x) => s + x, 0) / (xs.length || 1), med: median(xs), win: xs.filter((x) => x > 0).length / (xs.length || 1), t: dm.length >= 10 ? (m / sd) * Math.sqrt(dm.length) : NaN };
   }
-  const md = [`# Technical Signal — backtest v4: breakout + volume, event by event\n`,
+  const md = [`# checkcoin — backtest v4: breakout + volume, event by event\n`,
     `${C.length} coins (24h volume ≥ 3 M USD today) · daily candles ${new Date(start + firstDay * day).toISOString().slice(0, 10)} → ${new Date(today).toISOString().slice(0, 10)} · result = coin return − equal-weight market over the same days − 0.1 % fees · t uses events grouped by day.\n`,
     `| N-day high | volume × | hold | events | mean | median | won | t | folds won | mean per fold | train mean | test mean | test median | test t |`, `|---|---|---|---|---|---|---|---|---|---|---|---|---|---|`];
   const res = [];
