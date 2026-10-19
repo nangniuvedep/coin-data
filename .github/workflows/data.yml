@@ -38,12 +38,15 @@ jobs:
         run: aws s3 cp "s3://$B/${P}state.json" state.json --endpoint-url "$E" --only-show-errors || echo "first run"
       - name: Fetch
         run: node run.js
+      - name: Funds
+        run: node run.js etf || echo "funds skipped"
       - name: Save
         run: |
           aws s3 cp state.json "s3://$B/${P}state.json" --endpoint-url "$E" --only-show-errors --content-type application/json --cache-control "no-store"
           aws s3 cp live.json "s3://$B/${P}live.json" --endpoint-url "$E" --only-show-errors --content-type application/json --cache-control "public, max-age=60"
           aws s3 cp signals.json "s3://$B/${P}signals.json" --endpoint-url "$E" --only-show-errors --content-type application/json --cache-control "public, max-age=60"
           aws s3 cp rules.json "s3://$B/${P}rules.json" --endpoint-url "$E" --only-show-errors --content-type application/json --cache-control "public, max-age=60"
+          [ ! -f etf.json ] || aws s3 cp etf.json "s3://$B/${P}etf.json" --endpoint-url "$E" --only-show-errors --content-type application/json --cache-control "public, max-age=600"
   check:
     needs: run
     if: ${{ !cancelled() && (needs.run.outputs.daily == 'true' || inputs.validate) }}
