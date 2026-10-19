@@ -46,6 +46,7 @@ jobs:
           aws s3 cp live.json "s3://$B/${P}live.json" --endpoint-url "$E" --only-show-errors --content-type application/json --cache-control "public, max-age=60"
           aws s3 cp signals.json "s3://$B/${P}signals.json" --endpoint-url "$E" --only-show-errors --content-type application/json --cache-control "public, max-age=60"
           aws s3 cp rules.json "s3://$B/${P}rules.json" --endpoint-url "$E" --only-show-errors --content-type application/json --cache-control "public, max-age=60"
+          aws s3 cp brief.json "s3://$B/${P}brief.json" --endpoint-url "$E" --only-show-errors --content-type application/json --cache-control "public, max-age=60"
           [ ! -f etf.json ] || aws s3 cp etf.json "s3://$B/${P}etf.json" --endpoint-url "$E" --only-show-errors --content-type application/json --cache-control "public, max-age=600"
   check:
     needs: run
